@@ -367,8 +367,8 @@ class NFCManager: NSObject, ObservableObject {
                 switch result {
                 case .success(let info):
                     var updatedCard = card
-                    updatedCard.dsfId = info.dataStorageFormatIdentifier
-                    updatedCard.afi = info.applicationFamilyIdentifier
+                    updatedCard.dsfId = UInt8(info.dataStorageFormatIdentifier)
+                    updatedCard.afi = UInt8(info.applicationFamilyIdentifier)
                     updatedCard.icReference = info.icReference
                     
                     // 读取数据块
