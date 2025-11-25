@@ -297,7 +297,7 @@ class NFCManager: NSObject, ObservableObject {
         }
         
         // 将block转换为id类型
-        let completionId = unsafeBitCast(completionBlock as AnyObject, to: AnyObject.self)
+        let completionId: AnyObject = completionBlock as AnyObject
         
         log("调用 queueReaderSession...")
         
@@ -323,10 +323,12 @@ class NFCManager: NSObject, ObservableObject {
         
         // 设置超时
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-            guard let self = self, self.state == .scanning else { return }
-            self.log("读取超时")
-            self.state = .idle
-            self.statusMessage = "读取超时"
+            guard let self = self else { return }
+            if case .scanning = self.state {
+                self.log("读取超时")
+                self.state = .idle
+                self.statusMessage = "读取超时"
+            }
         }
     }
     
