@@ -66,23 +66,54 @@ struct ReadView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                // 状态指示器
-                StatusIndicator(state: nfcManager.state)
-                
-                Spacer()
-                
-                // NFC图标
-                Image(systemName: "wave.3.right.circle.fill")
-                    .font(.system(size: 120))
-                    .foregroundColor(.blue)
-                    .opacity(isScanning ? 0.5 : 1.0)
-                    .animation(isScanning ? Animation.easeInOut(duration: 1).repeatForever() : .default, value: isScanning)
-                
-                // 状态文本
-                Text(nfcManager.statusMessage.isEmpty ? "准备就绪" : nfcManager.statusMessage)
-                    .font(.headline)
-                    .foregroundColor(.secondary)
+            ScrollView {
+                VStack(spacing: 20) {
+                    // NFC可用性检查
+                    if !nfcManager.isNFCAvailable {
+                        VStack(spacing: 8) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(.red)
+                            Text("⚠️ NFC不可用")
+                                .font(.headline)
+                                .foregroundColor(.red)
+                            Text("请确保您的设备支持NFC且已开启")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("iPhone 7及以上设备支持NFC")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    } else {
+                        // NFC可用提示
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text("NFC已就绪")
+                                .foregroundColor(.green)
+                        }
+                        .font(.caption)
+                    }
+                    
+                    // 状态指示器
+                    StatusIndicator(state: nfcManager.state)
+                    
+                    // NFC图标
+                    Image(systemName: "wave.3.right.circle.fill")
+                        .font(.system(size: 100))
+                        .foregroundColor(nfcManager.isNFCAvailable ? .blue : .gray)
+                        .opacity(isScanning ? 0.5 : 1.0)
+                        .animation(isScanning ? Animation.easeInOut(duration: 1).repeatForever() : .default, value: isScanning)
+                    
+                    // 状态文本
+                    Text(nfcManager.statusMessage.isEmpty ? "准备就绪" : nfcManager.statusMessage)
+                        .font(.headline)
+                        .foregroundColor(.secondary)
                 
                 Spacer()
                 
@@ -125,7 +156,7 @@ struct ReadView: View {
                     }
                 }
                 .padding(.horizontal)
-                .disabled(isScanning)
+                .disabled(isScanning || !nfcManager.isNFCAvailable)
                 
                 // 最近读取的卡片
                 if let card = nfcManager.currentCard {
@@ -163,6 +194,7 @@ struct ReadView: View {
                         .cornerRadius(8)
                     }
                     .padding()
+                }
                 }
             }
             .navigationTitle("TrollNFC")
