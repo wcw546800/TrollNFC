@@ -369,7 +369,7 @@ class NFCManager: NSObject, ObservableObject {
                     var updatedCard = card
                     updatedCard.dsfId = UInt8(info.dataStorageFormatIdentifier)
                     updatedCard.afi = UInt8(info.applicationFamilyIdentifier)
-                    updatedCard.icReference = info.icReference
+                    updatedCard.icReference = UInt8(info.icReference)
                     
                     // 读取数据块
                     self?.readISO15693Blocks(tag: tag, blockCount: info.blockCount) { rawData in
