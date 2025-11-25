@@ -261,47 +261,72 @@ class NFCManager: NSObject, ObservableObject {
     }
     
     private func tryQueueReaderSession(manager: AnyObject) {
-        log("尝试创建Reader Session...")
+        log("尝试通过私有API创建Reader Session...")
         
-        // 创建一个简单的session配置
-        // 这里需要根据实际API调整
-        let sessionConfig: [String: Any] = [
-            "pollingOption": 7,  // ISO14443 | ISO15693 | ISO18092
-            "alertMessage": "请将卡片放在iPhone顶部"
+        // 第一个参数可能是 session key 或 identifier
+        let sessionKey = UUID().uuidString
+        log("使用SessionKey: \(sessionKey)")
+        
+        // 创建session配置字典
+        let sessionConfig: NSDictionary = [
+            "pollingOption": NSNumber(value: 7),  // ISO14443 | ISO15693 | ISO18092  
+            "alertMessage": "请将卡片放在iPhone顶部" as NSString,
+            "invalidateAfterFirstRead": NSNumber(value: false)
         ]
         
-        // 使用完成回调
-        let completionHandler: @convention(block) (AnyObject?, Error?) -> Void = { [weak self] session, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                self.log("❌ Session错误: \(error.localizedDescription)")
-                self.state = .idle
-                self.readCompletion?(.failure(error))
-                return
-            }
-            
-            if let session = session {
-                self.log("✅ Session创建成功: \(type(of: session))")
-                self.handlePrivateSession(session)
-            } else {
-                self.log("❌ Session为nil")
-                self.state = .idle
+        // 完成回调
+        let completionBlock: @convention(block) (AnyObject?, NSError?) -> Void = { [weak self] result, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                if let error = error {
+                    self.log("❌ 私有Session错误: \(error.localizedDescription)")
+                    self.log("错误域: \(error.domain), 代码: \(error.code)")
+                    self.state = .idle
+                    self.readCompletion?(.failure(error))
+                    return
+                }
+                
+                if let result = result {
+                    self.log("✅ 私有Session结果: \(type(of: result))")
+                    self.handlePrivateSession(result)
+                } else {
+                    self.log("❌ 私有Session结果为nil")
+                }
             }
         }
         
-        // 调用私有方法
-        // 注意：这里的参数格式可能需要调整
+        // 将block转换为id类型
+        let completionId = unsafeBitCast(completionBlock as AnyObject, to: AnyObject.self)
+        
+        log("调用 queueReaderSession...")
+        
+        // 尝试使用perform调用
         let selector = NSSelectorFromString("queueReaderSession:sessionConfig:completionHandler:")
         
-        if manager.responds(to: selector) {
-            // 由于参数类型复杂，我们需要使用NSInvocation或直接尝试
-            log("调用 queueReaderSession...")
-            
-            // 先用标准方式测试
-            startReading { [weak self] result in
-                self?.log("标准读取结果已返回")
-            }
+        // 方法1: 使用 methodForSelector + 函数指针
+        let method = manager.method(for: selector)
+        
+        typealias QueueSessionFunc = @convention(c) (
+            AnyObject,      // self
+            Selector,       // _cmd
+            AnyObject,      // sessionKey
+            AnyObject,      // sessionConfig
+            AnyObject       // completionHandler
+        ) -> Void
+        
+        let queueSession = unsafeBitCast(method, to: QueueSessionFunc.self)
+        
+        log("执行私有方法调用...")
+        queueSession(manager, selector, sessionKey as AnyObject, sessionConfig, completionId)
+        log("私有方法已调用，等待回调...")
+        
+        // 设置超时
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            guard let self = self, self.state == .scanning else { return }
+            self.log("读取超时")
+            self.state = .idle
+            self.statusMessage = "读取超时"
         }
     }
     
