@@ -150,34 +150,34 @@ class NFCManager: NSObject, ObservableObject {
             if let cls = NSClassFromString(className) {
                 log("✅ 发现类: \(className)")
                 
-                // 尝试获取单例
-                for methodName in possibleSingletonMethods {
-                    let selector = NSSelectorFromString(methodName)
-                    if cls.responds(to: selector) {
-                        log("  ↳ 响应方法: \(methodName)")
+                // 列出类方法
+                var classMethodCount: UInt32 = 0
+                if let classMethods = class_copyMethodList(object_getClass(cls), &classMethodCount) {
+                    log("  类方法:")
+                    for i in 0..<Int(classMethodCount) {
+                        let method = classMethods[i]
+                        let name = NSStringFromSelector(method_getName(method))
+                        // 打印所有方法，不过滤
+                        log("    + \(name)")
                     }
+                    free(classMethods)
                 }
                 
                 // 列出实例方法
                 var methodCount: UInt32 = 0
                 if let methods = class_copyMethodList(cls, &methodCount) {
+                    log("  实例方法:")
                     for i in 0..<Int(methodCount) {
                         let method = methods[i]
                         let name = NSStringFromSelector(method_getName(method))
-                        if name.lowercased().contains("nfc") || 
-                           name.lowercased().contains("field") ||
-                           name.lowercased().contains("tag") ||
-                           name.lowercased().contains("transceive") ||
-                           name.lowercased().contains("poll") {
-                            log("  ↳ 方法: \(name)")
-                        }
+                        // 打印所有方法
+                        log("    - \(name)")
                     }
                     free(methods)
                 }
             }
         }
         
-        // 还可以搜索其他包含NF的类
         log("探测完成")
     }
     
