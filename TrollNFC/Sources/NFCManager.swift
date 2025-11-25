@@ -349,14 +349,9 @@ class NFCManager: NSObject, ObservableObject {
     private func startPollingForTag(manager: AnyObject) {
         log("开始轮询标签...")
         
-        // 尝试发送REQA命令 (ISO14443-3A)
-        // REQA = 0x26, 用于激活卡片
-        let reqaCommand = Data([0x26])
-        
         let transceiveSelector = NSSelectorFromString("transceive:completion:")
         if manager.responds(to: transceiveSelector) {
-            log("发送REQA命令...")
-            
+            log("发送REQA命令(0x26)...")
             // 使用定时器轮询
             pollForCard(manager: manager, attempts: 0, maxAttempts: 30)
         } else {
