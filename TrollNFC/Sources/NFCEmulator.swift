@@ -10,7 +10,7 @@ import Foundation
 import Combine
 
 // MARK: - 模拟状态
-enum EmulationState {
+enum EmulationState: Equatable {
     case idle
     case preparing
     case active
@@ -198,18 +198,12 @@ class NFCEmulator: ObservableObject {
                     _ = session.perform(handlerSelector, with: handler)
                     
                     // 启动会话
-                    let startSelector = NSSelectorFromString("startWithError:")
+                    let startSelector = NSSelectorFromString("start")
                     if session.responds(to: startSelector) {
-                        var error: NSError?
-                        _ = session.perform(startSelector, with: &error)
-                        if let error = error {
-                            state = .error(error.localizedDescription)
-                            log("HCE start error: \(error.localizedDescription)")
-                        } else {
-                            state = .active
-                            currentEmulatingCard = card
-                            log("HCE emulation started")
-                        }
+                        _ = session.perform(startSelector)
+                        state = .active
+                        currentEmulatingCard = card
+                        log("HCE emulation started")
                     }
                 }
             }
@@ -229,10 +223,7 @@ class NFCEmulator: ObservableObject {
             return
         }
         
-        let cla = command[0]
         let ins = command[1]
-        let p1 = command[2]
-        let p2 = command[3]
         
         // 处理常见命令
         switch ins {
@@ -270,18 +261,11 @@ class NFCEmulator: ObservableObject {
         log("Attempting to load card to Secure Element...")
         
         let emulationData = prepareEmulationData(card: card)
-        let selector = NSSelectorFromString("loadCardData:error:")
+        let selector = NSSelectorFromString("loadCardData:")
         
         if seManager.responds(to: selector) {
-            var error: NSError?
-            let result = seManager.perform(selector, with: emulationData, with: &error)
-            
-            if let error = error {
-                log("SE load error: \(error.localizedDescription)")
-                return false
-            }
-            
-            log("Card loaded to Secure Element successfully")
+            _ = seManager.perform(selector, with: emulationData)
+            log("Card loaded to Secure Element")
             return true
         }
         

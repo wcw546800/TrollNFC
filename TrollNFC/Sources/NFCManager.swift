@@ -289,10 +289,10 @@ class NFCManager: NSObject, ObservableObject {
             let readCommand = Data([0x30, UInt8(blockNumber)])
             
             tag.sendMiFareCommand(commandPacket: readCommand) { response, error in
-                if let data = response, error == nil {
+                if error == nil {
                     let block = MifareBlock(
                         blockNumber: blockNumber,
-                        data: data,
+                        data: response,
                         isTrailerBlock: i == 3
                     )
                     blocks.append(block)
@@ -359,7 +359,7 @@ class NFCManager: NSObject, ObservableObject {
             uid: tag.identifier
         )
         
-        card.icReference = tag.icManufacturerCode
+        card.icReference = UInt8(tag.icManufacturerCode)
         
         // 读取系统信息
         tag.getSystemInfo(requestFlags: [.highDataRate]) { [weak self] result in
@@ -367,8 +367,8 @@ class NFCManager: NSObject, ObservableObject {
                 switch result {
                 case .success(let info):
                     var updatedCard = card
-                    updatedCard.dsfId = info.dsfID
-                    updatedCard.afi = info.afi
+                    updatedCard.dsfId = info.dataStorageFormatIdentifier
+                    updatedCard.afi = info.applicationFamilyIdentifier
                     updatedCard.icReference = info.icReference
                     
                     // 读取数据块

@@ -56,7 +56,15 @@ struct MifareBlock: Codable, Identifiable {
 }
 
 // MARK: - NFC卡片主模型
-struct NFCCard: Codable, Identifiable {
+struct NFCCard: Codable, Identifiable, Hashable {
+    static func == (lhs: NFCCard, rhs: NFCCard) -> Bool {
+        lhs.id == rhs.id
+    }
+    
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+    
     var id = UUID()
     var name: String
     var type: NFCCardType
