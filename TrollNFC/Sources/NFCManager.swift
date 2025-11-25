@@ -117,8 +117,8 @@ class NFCManager: NSObject, ObservableObject {
     
     // iOS 16+ 可能的NFC私有类名
     private let possibleNFCClasses = [
+        "NFCHardwareManager",  // iOS 16+ 主要类
         "NFHardwareManager",
-        "NFCHardwareManager", 
         "NFCManager",
         "NFDriver",
         "NFCDriver",
@@ -134,6 +134,7 @@ class NFCManager: NSObject, ObservableObject {
     ]
     
     private let possibleSingletonMethods = [
+        "sharedHardwareManager",  // iOS 16+ NFCHardwareManager使用这个
         "sharedManager",
         "sharedInstance", 
         "shared",
@@ -141,6 +142,13 @@ class NFCManager: NSObject, ObservableObject {
         "defaultManager",
         "currentManager"
     ]
+    
+    // 复制日志到剪贴板
+    func copyLogToClipboard() {
+        let logText = debugLog.joined(separator: "\n")
+        UIPasteboard.general.string = logText
+        log("✅ 日志已复制到剪贴板")
+    }
     
     // 探测所有NFC相关私有类
     func discoverPrivateNFCClasses() {
@@ -229,22 +237,88 @@ class NFCManager: NSObject, ObservableObject {
         state = .scanning
         statusMessage = "私有模式 - 请将卡片靠近iPhone顶部"
         
-        // 尝试启用NFC
-        let enableSelector = NSSelectorFromString("setNFCEnabled:")
-        if manager.responds(to: enableSelector) {
-            _ = manager.perform(enableSelector, with: true)
-            log("已启用NFC")
+        // 检查可用方法
+        log("检查管理器方法...")
+        
+        // 尝试使用 queueReaderSession:sessionConfig:completionHandler:
+        let queueSelector = NSSelectorFromString("queueReaderSession:sessionConfig:completionHandler:")
+        if manager.responds(to: queueSelector) {
+            log("✅ 支持 queueReaderSession")
+            tryQueueReaderSession(manager: manager)
+        } else {
+            log("❌ 不支持 queueReaderSession")
+            
+            // 尝试其他方法
+            let areFeaturesSelector = NSSelectorFromString("areFeaturesSupported:outError:")
+            if manager.responds(to: areFeaturesSelector) {
+                log("✅ 支持 areFeaturesSupported")
+            }
+            
+            // 回退到标准模式
+            log("回退到标准模式")
+            startReading(completion: completion)
+        }
+    }
+    
+    private func tryQueueReaderSession(manager: AnyObject) {
+        log("尝试创建Reader Session...")
+        
+        // 创建一个简单的session配置
+        // 这里需要根据实际API调整
+        let sessionConfig: [String: Any] = [
+            "pollingOption": 7,  // ISO14443 | ISO15693 | ISO18092
+            "alertMessage": "请将卡片放在iPhone顶部"
+        ]
+        
+        // 使用完成回调
+        let completionHandler: @convention(block) (AnyObject?, Error?) -> Void = { [weak self] session, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                self.log("❌ Session错误: \(error.localizedDescription)")
+                self.state = .idle
+                self.readCompletion?(.failure(error))
+                return
+            }
+            
+            if let session = session {
+                self.log("✅ Session创建成功: \(type(of: session))")
+                self.handlePrivateSession(session)
+            } else {
+                self.log("❌ Session为nil")
+                self.state = .idle
+            }
         }
         
-        // 开始场检测
-        let startFieldSelector = NSSelectorFromString("startFieldDetect")
-        if manager.responds(to: startFieldSelector) {
-            _ = manager.perform(startFieldSelector)
-            log("已开始场检测")
-        }
+        // 调用私有方法
+        // 注意：这里的参数格式可能需要调整
+        let selector = NSSelectorFromString("queueReaderSession:sessionConfig:completionHandler:")
         
-        // 尝试读取标签
-        startPollingForTag(manager: manager)
+        if manager.responds(to: selector) {
+            // 由于参数类型复杂，我们需要使用NSInvocation或直接尝试
+            log("调用 queueReaderSession...")
+            
+            // 先用标准方式测试
+            startReading { [weak self] result in
+                self?.log("标准读取结果已返回")
+            }
+        }
+    }
+    
+    private func handlePrivateSession(_ session: AnyObject) {
+        log("处理私有Session: \(type(of: session))")
+        
+        // 列出session的方法
+        let cls: AnyClass = type(of: session)
+        var methodCount: UInt32 = 0
+        if let methods = class_copyMethodList(cls, &methodCount) {
+            for i in 0..<min(Int(methodCount), 20) {
+                let method = methods[i]
+                let name = NSStringFromSelector(method_getName(method))
+                log("  Session方法: \(name)")
+            }
+            free(methods)
+        }
     }
     
     private func startPollingForTag(manager: AnyObject) {

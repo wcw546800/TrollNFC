@@ -186,10 +186,16 @@ struct ReadView: View {
                             Text("调试日志")
                                 .font(.headline)
                             Spacer()
+                            Button("复制") {
+                                nfcManager.copyLogToClipboard()
+                            }
+                            .font(.caption)
+                            .foregroundColor(.blue)
                             Button("清除") {
                                 nfcManager.debugLog.removeAll()
                             }
                             .font(.caption)
+                            .foregroundColor(.red)
                         }
                         
                         ScrollView {
