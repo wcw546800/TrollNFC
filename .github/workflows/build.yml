@@ -33,6 +33,10 @@ jobs:
           DEVELOPMENT_TEAM="" \
           build
           
+    - name: Install ldid
+      run: |
+        brew install ldid
+        
     - name: Create IPA
       run: |
         # 找到.app文件
@@ -44,12 +48,21 @@ jobs:
         
         echo "Found app at: $APP_PATH"
         
+        # 使用ldid注入entitlements（TrollStore需要）
+        echo "注入entitlements..."
+        ldid -S./TrollNFC/TrollNFC.entitlements "$APP_PATH/TrollNFC"
+        
+        # 确保Info.plist包含NFC权限
+        /usr/libexec/PlistBuddy -c "Print :NFCReaderUsageDescription" "$APP_PATH/Info.plist" || echo "NFCReaderUsageDescription not found"
+        
         # 创建Payload目录
         mkdir -p Payload
         cp -r "$APP_PATH" Payload/
         
         # 打包IPA
         zip -r TrollNFC.ipa Payload
+        
+        echo "IPA创建完成!"
         
     - name: Upload IPA
       uses: actions/upload-artifact@v4
