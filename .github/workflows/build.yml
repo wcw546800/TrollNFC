@@ -1,0 +1,59 @@
+name: Build TrollNFC IPA
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+        
+    - name: Build
+      run: |
+        xcodebuild -project TrollNFC.xcodeproj \
+          -scheme TrollNFC \
+          -configuration Release \
+          -sdk iphoneos \
+          -destination 'generic/platform=iOS' \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
+          DEVELOPMENT_TEAM="" \
+          build
+          
+    - name: Create IPA
+      run: |
+        # 找到.app文件
+        APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "TrollNFC.app" -type d | head -1)
+        
+        if [ -z "$APP_PATH" ]; then
+          APP_PATH=$(find . -name "TrollNFC.app" -type d | head -1)
+        fi
+        
+        echo "Found app at: $APP_PATH"
+        
+        # 创建Payload目录
+        mkdir -p Payload
+        cp -r "$APP_PATH" Payload/
+        
+        # 打包IPA
+        zip -r TrollNFC.ipa Payload
+        
+    - name: Upload IPA
+      uses: actions/upload-artifact@v4
+      with:
+        name: TrollNFC-IPA
+        path: TrollNFC.ipa
+        if-no-files-found: error

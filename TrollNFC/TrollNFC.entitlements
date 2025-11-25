@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Standard NFC entitlements -->
+    <key>com.apple.developer.nfc.readersession.formats</key>
+    <array>
+        <string>NDEF</string>
+        <string>TAG</string>
+    </array>
+    
+    <!-- TrollStore: Extended NFC entitlements (private) -->
+    <key>com.apple.nfc.nfcprivate</key>
+    <true/>
+    
+    <key>com.apple.nfc.nfchardwaremanager</key>
+    <true/>
+    
+    <!-- Allow background NFC (TrollStore only) -->
+    <key>com.apple.developer.nfc.readersession.background</key>
+    <true/>
+    
+    <!-- Mifare Classic support -->
+    <key>com.apple.developer.nfc.readersession.mifare</key>
+    <true/>
+    
+    <!-- ISO14443 Type A/B -->
+    <key>com.apple.developer.nfc.readersession.iso14443</key>
+    <true/>
+    
+    <!-- ISO15693 (vicinity cards) -->
+    <key>com.apple.developer.nfc.readersession.iso15693</key>
+    <true/>
+    
+    <!-- Secure Element access (for emulation - experimental) -->
+    <key>com.apple.security.secure-element</key>
+    <true/>
+    
+    <key>com.apple.PassKit.pass-presentation-suppression</key>
+    <true/>
+</dict>
+</plist>
