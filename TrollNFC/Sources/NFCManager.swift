@@ -28,6 +28,56 @@ import UIKit
     func restartPolling()
 }
 
+// MARK: - NFC硬件回调监听器
+class NFCHardwareListener: NSObject {
+    weak var nfcManager: NFCManager?
+    
+    init(manager: NFCManager) {
+        self.nfcManager = manager
+        super.init()
+    }
+    
+    // 硬件状态变化回调
+    @objc func hwStateDidChange(_ state: Int) {
+        nfcManager?.log("硬件状态变化: \(state)")
+    }
+    
+    // 检测到标签回调
+    @objc func tagDetected(_ tagInfo: AnyObject?) {
+        if let info = tagInfo {
+            nfcManager?.log("✅ 检测到标签: \(type(of: info))")
+            nfcManager?.log("标签信息: \(info)")
+        }
+    }
+    
+    // Session回调
+    @objc func readerSessionDidStart(_ session: AnyObject?) {
+        nfcManager?.log("✅ Reader Session 已启动")
+    }
+    
+    @objc func readerSessionDidStop(_ session: AnyObject?) {
+        nfcManager?.log("❌ Reader Session 已停止")
+    }
+    
+    // 标签发现回调
+    @objc func didDetectTags(_ tags: [AnyObject]?) {
+        if let tags = tags {
+            nfcManager?.log("✅ 发现 \(tags.count) 个标签")
+            for (index, tag) in tags.enumerated() {
+                nfcManager?.log("标签[\(index)]: \(type(of: tag)) - \(tag)")
+            }
+        }
+    }
+    
+    // UID 回调
+    @objc func didReceiveUID(_ uid: Data?) {
+        if let uid = uid {
+            let uidString = uid.map { String(format: "%02X", $0) }.joined()
+            nfcManager?.log("✅ 收到UID: \(uidString)")
+        }
+    }
+}
+
 // MARK: - NFC操作状态
 enum NFCOperationState {
     case idle
@@ -263,15 +313,36 @@ class NFCManager: NSObject, ObservableObject {
     private func tryQueueReaderSession(manager: AnyObject) {
         log("尝试通过私有API创建Reader Session...")
         
+        // 先尝试添加回调监听器
+        let listenerSelector = NSSelectorFromString("addNFCHardwareManagerCallbacksListener:")
+        if manager.responds(to: listenerSelector) {
+            log("注册硬件回调监听器...")
+            // 创建一个代理对象来接收回调
+            let listener = NFCHardwareListener(manager: self)
+            objc_setAssociatedObject(manager, "listener", listener, .OBJC_ASSOCIATION_RETAIN)
+            _ = manager.perform(listenerSelector, with: listener)
+        }
+        
+        // 尝试使用 areFeaturesSupported 检查
+        let featuresSelector = NSSelectorFromString("areFeaturesSupported:outError:")
+        if manager.responds(to: featuresSelector) {
+            log("检查NFC功能支持...")
+            // 功能位: 1=TagReading, 2=TagWriting, 4=BackgroundTag, etc.
+        }
+        
         // 第一个参数可能是 session key 或 identifier
         let sessionKey = UUID().uuidString
         log("使用SessionKey: \(sessionKey)")
         
-        // 创建session配置字典
+        // 尝试不同的配置组合
+        // ISO14443-3A 需要特定的轮询配置
         let sessionConfig: NSDictionary = [
-            "pollingOption": NSNumber(value: 7),  // ISO14443 | ISO15693 | ISO18092  
-            "alertMessage": "请将卡片放在iPhone顶部" as NSString,
-            "invalidateAfterFirstRead": NSNumber(value: false)
+            "pollingOption": NSNumber(value: 1),  // 只用 ISO14443
+            "alertMessage": "" as NSString,
+            "invalidateAfterFirstRead": NSNumber(value: true),
+            "detectIso14443a": NSNumber(value: true),
+            "detectIso14443b": NSNumber(value: false),
+            "detectIso15693": NSNumber(value: false)
         ]
         
         // 完成回调
@@ -282,6 +353,9 @@ class NFCManager: NSObject, ObservableObject {
                 if let error = error {
                     self.log("❌ 私有Session错误: \(error.localizedDescription)")
                     self.log("错误域: \(error.domain), 代码: \(error.code)")
+                    if error.code == -1 {
+                        self.log("提示: 可能需要特定的entitlement")
+                    }
                     self.state = .idle
                     self.readCompletion?(.failure(error))
                     return
@@ -289,9 +363,11 @@ class NFCManager: NSObject, ObservableObject {
                 
                 if let result = result {
                     self.log("✅ 私有Session结果: \(type(of: result))")
+                    self.log("结果描述: \(result)")
                     self.handlePrivateSession(result)
                 } else {
-                    self.log("❌ 私有Session结果为nil")
+                    self.log("❌ 私有Session结果为nil，尝试其他方法...")
+                    self.tryAlternativeReading(manager: manager)
                 }
             }
         }
@@ -330,6 +406,35 @@ class NFCManager: NSObject, ObservableObject {
                 self.statusMessage = "读取超时"
             }
         }
+    }
+    
+    // 尝试替代读取方法
+    private func tryAlternativeReading(manager: AnyObject) {
+        log("尝试替代方法...")
+        
+        // 检查是否有 getReaderSessionWithKey 方法
+        let getSessionSelector = NSSelectorFromString("getReaderSessionWithKey:")
+        if manager.responds(to: getSessionSelector) {
+            log("尝试 getReaderSessionWithKey...")
+        }
+        
+        // 尝试直接使用 CoreNFC 但配置更宽松
+        log("回退到宽松CoreNFC模式...")
+        startRelaxedReading()
+    }
+    
+    // 宽松模式读取 - 专门针对 ISO14443-3A
+    func startRelaxedReading() {
+        log("启动宽松ISO14443读取...")
+        
+        // 创建 NFCTagReaderSession 但使用特殊配置
+        tagReaderSession = NFCTagReaderSession(
+            pollingOption: [.iso14443],
+            delegate: self
+        )
+        tagReaderSession?.alertMessage = "请将门禁卡紧贴iPhone顶部NFC区域"
+        tagReaderSession?.begin()
+        log("宽松模式会话已启动")
     }
     
     private func handlePrivateSession(_ session: AnyObject) {
