@@ -115,37 +115,112 @@ class NFCManager: NSObject, ObservableObject {
     // 私有NFC管理器实例
     private var privateNFCManager: AnyObject?
     
-    // 获取私有NFC管理器 (NFHardwareManager)
+    // iOS 16+ 可能的NFC私有类名
+    private let possibleNFCClasses = [
+        "NFHardwareManager",
+        "NFCHardwareManager", 
+        "NFCManager",
+        "NFDriver",
+        "NFCDriver",
+        "NFHardwareController",
+        "NFCHardwareController",
+        "NFReaderSession",
+        "NFCReaderManager",
+        "NFCFieldDetectManager",
+        "NFFieldManager",
+        "NFCC",
+        "NFController",
+        "NFCController"
+    ]
+    
+    private let possibleSingletonMethods = [
+        "sharedManager",
+        "sharedInstance", 
+        "shared",
+        "manager",
+        "defaultManager",
+        "currentManager"
+    ]
+    
+    // 探测所有NFC相关私有类
+    func discoverPrivateNFCClasses() {
+        log("开始探测NFC私有类...")
+        
+        for className in possibleNFCClasses {
+            if let cls = NSClassFromString(className) {
+                log("✅ 发现类: \(className)")
+                
+                // 尝试获取单例
+                for methodName in possibleSingletonMethods {
+                    let selector = NSSelectorFromString(methodName)
+                    if cls.responds(to: selector) {
+                        log("  ↳ 响应方法: \(methodName)")
+                    }
+                }
+                
+                // 列出实例方法
+                var methodCount: UInt32 = 0
+                if let methods = class_copyMethodList(cls, &methodCount) {
+                    for i in 0..<Int(methodCount) {
+                        let method = methods[i]
+                        let name = NSStringFromSelector(method_getName(method))
+                        if name.lowercased().contains("nfc") || 
+                           name.lowercased().contains("field") ||
+                           name.lowercased().contains("tag") ||
+                           name.lowercased().contains("transceive") ||
+                           name.lowercased().contains("poll") {
+                            log("  ↳ 方法: \(name)")
+                        }
+                    }
+                    free(methods)
+                }
+            }
+        }
+        
+        // 还可以搜索其他包含NF的类
+        log("探测完成")
+    }
+    
+    // 获取私有NFC管理器
     private func getPrivateNFCManager() -> AnyObject? {
         if let manager = privateNFCManager {
             return manager
         }
         
-        // 尝试获取 NFHardwareManager
-        if let managerClass = NSClassFromString("NFHardwareManager") {
-            let selector = NSSelectorFromString("sharedManager")
-            if let method = class_getClassMethod(managerClass, selector) {
-                let impl = method_getImplementation(method)
-                typealias Function = @convention(c) (AnyClass, Selector) -> AnyObject?
-                let function = unsafeBitCast(impl, to: Function.self)
-                if let manager = function(managerClass, selector) {
-                    privateNFCManager = manager
-                    log("✅ NFHardwareManager 获取成功")
-                    return manager
+        // 尝试所有可能的类名和方法
+        for className in possibleNFCClasses {
+            if let managerClass = NSClassFromString(className) {
+                for methodName in possibleSingletonMethods {
+                    let selector = NSSelectorFromString(methodName)
+                    if let method = class_getClassMethod(managerClass, selector) {
+                        let impl = method_getImplementation(method)
+                        typealias Function = @convention(c) (AnyClass, Selector) -> AnyObject?
+                        let function = unsafeBitCast(impl, to: Function.self)
+                        if let manager = function(managerClass, selector) {
+                            privateNFCManager = manager
+                            log("✅ \(className).\(methodName) 获取成功")
+                            return manager
+                        }
+                    }
                 }
             }
         }
         
-        log("❌ 无法获取NFHardwareManager")
+        log("❌ 无法获取任何NFC私有管理器")
         return nil
     }
     
     // MARK: - 私有API读取（无系统弹窗）
     func startPrivateReading(completion: @escaping (Result<NFCCard, Error>) -> Void) {
         log("开始私有API读取模式...")
+        log("iOS版本: \(UIDevice.current.systemVersion)")
+        
+        // 先探测有哪些私有类可用
+        discoverPrivateNFCClasses()
         
         guard let manager = getPrivateNFCManager() else {
-            log("无法获取私有NFC管理器，回退到标准模式")
+            log("无法获取私有NFC管理器")
+            log("回退到标准CoreNFC模式...")
             startReading(completion: completion)
             return
         }
