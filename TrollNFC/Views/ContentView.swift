@@ -134,6 +134,36 @@ struct ReadView: View {
                     })
                     .padding()
                 }
+                
+                // 调试日志
+                if !nfcManager.debugLog.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("调试日志")
+                                .font(.headline)
+                            Spacer()
+                            Button("清除") {
+                                nfcManager.debugLog.removeAll()
+                            }
+                            .font(.caption)
+                        }
+                        
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(nfcManager.debugLog, id: \.self) { log in
+                                    Text(log)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(height: 150)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                    }
+                    .padding()
+                }
             }
             .navigationTitle("TrollNFC")
             .alert("保存卡片", isPresented: $showingSaveAlert) {

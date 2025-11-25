@@ -38,6 +38,21 @@ class NFCManager: NSObject, ObservableObject {
     @Published var currentCard: NFCCard?
     @Published var scanProgress: Double = 0
     @Published var statusMessage: String = ""
+    @Published var debugLog: [String] = []  // 调试日志
+    
+    // 添加日志
+    func log(_ message: String) {
+        let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+        let logMessage = "[\(timestamp)] \(message)"
+        print(logMessage)
+        DispatchQueue.main.async {
+            self.debugLog.append(logMessage)
+            // 保留最近50条
+            if self.debugLog.count > 50 {
+                self.debugLog.removeFirst()
+            }
+        }
+    }
     
     // NFC会话
     private var tagReaderSession: NFCTagReaderSession?
@@ -72,23 +87,29 @@ class NFCManager: NSObject, ObservableObject {
     
     // MARK: - 读取标签
     func startReading(operation: NFCOperation = .readTag, completion: @escaping (Result<NFCCard, Error>) -> Void) {
+        log("开始读取...")
+        
         guard isNFCAvailable else {
+            log("错误: NFC不可用")
+            statusMessage = "NFC不可用"
             completion(.failure(NFCError.notAvailable))
             return
         }
         
+        log("NFC可用，启动会话...")
         currentOperation = operation
         readCompletion = completion
         state = .scanning
-        statusMessage = "Hold your iPhone near the NFC tag"
+        statusMessage = "请将iPhone靠近NFC标签"
         
         // 使用TagReaderSession以获取更多标签信息
         tagReaderSession = NFCTagReaderSession(
             pollingOption: [.iso14443, .iso15693, .iso18092],
             delegate: self
         )
-        tagReaderSession?.alertMessage = "Hold your iPhone near the NFC tag to read"
+        tagReaderSession?.alertMessage = "请将iPhone靠近NFC标签进行读取"
         tagReaderSession?.begin()
+        log("NFC会话已启动")
     }
     
     // MARK: - 读取NDEF
@@ -462,17 +483,20 @@ class NFCManager: NSObject, ObservableObject {
 // MARK: - NFCTagReaderSessionDelegate
 extension NFCManager: NFCTagReaderSessionDelegate {
     func tagReaderSessionDidBecomeActive(_ session: NFCTagReaderSession) {
+        log("会话已激活，等待扫描...")
         DispatchQueue.main.async {
             self.state = .scanning
-            self.statusMessage = "Scanning for NFC tags..."
+            self.statusMessage = "正在扫描NFC标签..."
         }
     }
     
     func tagReaderSession(_ session: NFCTagReaderSession, didInvalidateWithError error: Error) {
+        log("会话结束: \(error.localizedDescription)")
         DispatchQueue.main.async {
             if let nfcError = error as? NFCReaderError,
                nfcError.code != .readerSessionInvalidationErrorUserCanceled {
                 self.state = .error(error.localizedDescription)
+                self.statusMessage = "错误: \(error.localizedDescription)"
                 self.readCompletion?(.failure(error))
             }
             self.state = .idle
@@ -481,34 +505,45 @@ extension NFCManager: NFCTagReaderSessionDelegate {
     }
     
     func tagReaderSession(_ session: NFCTagReaderSession, didDetect tags: [NFCTag]) {
+        log("检测到 \(tags.count) 个标签!")
         guard let tag = tags.first else {
-            session.invalidate(errorMessage: "No tag found")
+            log("错误: 未找到标签")
+            session.invalidate(errorMessage: "未找到标签")
             return
         }
         
+        log("正在连接标签...")
         session.connect(to: tag) { [weak self] error in
             guard let self = self else { return }
             
             if let error = error {
+                self.log("连接失败: \(error.localizedDescription)")
                 session.invalidate(errorMessage: error.localizedDescription)
                 return
             }
             
+            self.log("连接成功，识别标签类型...")
             switch tag {
             case .miFare(let mifareTag):
+                let uid = mifareTag.identifier.map { String(format: "%02X", $0) }.joined(separator: ":")
+                self.log("Mifare标签, UID: \(uid)")
                 self.handleMifareTag(mifareTag, session: session)
                 
             case .iso15693(let iso15693Tag):
+                self.log("ISO15693标签")
                 self.handleISO15693Tag(iso15693Tag, session: session)
                 
             case .feliCa(let feliCaTag):
+                self.log("FeliCa标签")
                 self.handleFeliCaTag(feliCaTag, session: session)
                 
             case .iso7816(let iso7816Tag):
+                self.log("ISO7816标签")
                 self.handleISO7816Tag(iso7816Tag, session: session)
                 
             @unknown default:
-                session.invalidate(errorMessage: "Unsupported tag type")
+                self.log("未知标签类型")
+                session.invalidate(errorMessage: "不支持的标签类型")
             }
         }
     }
