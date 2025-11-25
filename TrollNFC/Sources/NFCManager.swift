@@ -372,7 +372,7 @@ class NFCManager: NSObject, ObservableObject {
                     updatedCard.icReference = UInt8(info.icReference)
                     
                     // 读取数据块
-self?.readISO15693Blocks(tag: tag, blockCount: info.totalBlocks)
+                    self?.readISO15693Blocks(tag: tag, blockCount: info.totalBlocks) { rawData in
                         updatedCard.rawData = rawData
                         self?.currentCard = updatedCard
                         session.alertMessage = "Tag read successfully!"
