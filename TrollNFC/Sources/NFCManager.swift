@@ -9,6 +9,15 @@ import Foundation
 import CoreNFC
 import Combine
 
+// 私有API声明 - 从 NFCPrivate.h 桥接
+@objc protocol NFHardwareManagerProtocol {
+    static func sharedManager() -> AnyObject?
+    var isAvailable: Bool { get }
+    var isEnabled: Bool { get }
+    func setNFCEnabled(_ enabled: Bool)
+    func transceive(_ command: Data, completion: @escaping (Data?, Error?) -> Void)
+}
+
 // MARK: - NFC操作状态
 enum NFCOperationState {
     case idle
@@ -82,7 +91,32 @@ class NFCManager: NSObject, ObservableObject {
     
     // MARK: - 检查NFC是否可用
     var isNFCAvailable: Bool {
-        NFCTagReaderSession.readingAvailable
+        // 先检查官方API
+        if NFCTagReaderSession.readingAvailable {
+            return true
+        }
+        // 尝试私有API
+        if let hwManager = getHardwareManager(), hwManager.isAvailable {
+            return true
+        }
+        return false
+    }
+    
+    // 获取私有NFC硬件管理器
+    private func getHardwareManager() -> NFHardwareManagerProtocol? {
+        guard let managerClass = NSClassFromString("NFHardwareManager") as? NSObject.Type else {
+            log("未找到NFHardwareManager类")
+            return nil
+        }
+        
+        let selector = NSSelectorFromString("sharedManager")
+        guard managerClass.responds(to: selector) else {
+            log("NFHardwareManager不响应sharedManager")
+            return nil
+        }
+        
+        let manager = managerClass.perform(selector)?.takeUnretainedValue()
+        return manager as? NFHardwareManagerProtocol
     }
     
     // MARK: - 读取标签
@@ -167,9 +201,13 @@ class NFCManager: NSObject, ObservableObject {
     // MARK: - 私有方法 - 处理Mifare标签
     private func handleMifareTag(_ tag: NFCMiFareTag, session: NFCTagReaderSession) {
         state = .reading
-        statusMessage = "Reading Mifare tag..."
+        log("正在读取Mifare标签...")
+        statusMessage = "正在读取Mifare标签..."
         
         let uid = tag.identifier
+        let uidString = uid.map { String(format: "%02X", $0) }.joined(separator: ":")
+        log("UID: \(uidString)")
+        
         var card = NFCCard(
             name: "",
             type: detectMifareType(tag),
@@ -179,23 +217,29 @@ class NFCManager: NSObject, ObservableObject {
         // 获取基本信息
         if let historicalBytes = tag.historicalBytes {
             card.ats = historicalBytes
+            log("ATS: \(historicalBytes.map { String(format: "%02X", $0) }.joined())")
         }
+        
+        // 尝试获取SAK和ATQA（通过私有API）
+        tryGetExtendedInfo(tag: tag, card: &card)
         
         // 尝试读取扇区
         if case .dumpCard = currentOperation {
+            log("开始完整读取...")
             dumpMifareClassic(tag: tag, card: &card) { [weak self] result in
                 DispatchQueue.main.async {
                     switch result {
                     case .success(let dumpedCard):
+                        self?.log("卡片读取成功!")
                         self?.currentCard = dumpedCard
-                        session.alertMessage = "Card read successfully!"
+                        session.alertMessage = "卡片读取成功!"
                         session.invalidate()
                         self?.state = .idle
                         self?.readCompletion?(.success(dumpedCard))
                     case .failure(let error):
-                        // 即使dump失败，也返回基本卡片信息
+                        self?.log("部分读取: \(error.localizedDescription)")
                         self?.currentCard = card
-                        session.alertMessage = "Partial read: \(error.localizedDescription)"
+                        session.alertMessage = "部分读取成功"
                         session.invalidate()
                         self?.state = .idle
                         self?.readCompletion?(.success(card))
@@ -203,12 +247,38 @@ class NFCManager: NSObject, ObservableObject {
                 }
             }
         } else {
-            // 简单读取
+            // 快速读取 - 只读取基本信息
+            log("快速读取完成")
             currentCard = card
-            session.alertMessage = "Tag read successfully!"
+            session.alertMessage = "读取成功!"
             session.invalidate()
             state = .idle
             readCompletion?(.success(card))
+        }
+    }
+    
+    // MARK: - 尝试获取扩展信息（私有API）
+    private func tryGetExtendedInfo(tag: NFCMiFareTag, card: inout NFCCard) {
+        // 尝试通过反射获取SAK
+        let tagObject = tag as AnyObject
+        
+        // 尝试获取SAK
+        let sakSelector = NSSelectorFromString("sak")
+        if tagObject.responds(to: sakSelector) {
+            if let result = tagObject.perform(sakSelector) {
+                let sak = UInt8(truncatingIfNeeded: Int(bitPattern: result.toOpaque()))
+                card.sak = sak
+                log("SAK: 0x\(String(format: "%02X", sak))")
+            }
+        }
+        
+        // 尝试获取ATQA
+        let atqaSelector = NSSelectorFromString("atqa")
+        if tagObject.responds(to: atqaSelector) {
+            if let result = tagObject.perform(atqaSelector)?.takeUnretainedValue() as? Data {
+                card.atqa = result
+                log("ATQA: \(result.map { String(format: "%02X", $0) }.joined())")
+            }
         }
     }
     
