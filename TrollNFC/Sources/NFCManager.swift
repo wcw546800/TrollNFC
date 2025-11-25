@@ -310,18 +310,11 @@ class NFCManager: NSObject, ObservableObject {
         }
     }
     
+    // 用于存储 listener 的 key
+    private static var listenerKey: UInt8 = 0
+    
     private func tryQueueReaderSession(manager: AnyObject) {
         log("尝试通过私有API创建Reader Session...")
-        
-        // 先尝试添加回调监听器
-        let listenerSelector = NSSelectorFromString("addNFCHardwareManagerCallbacksListener:")
-        if manager.responds(to: listenerSelector) {
-            log("注册硬件回调监听器...")
-            // 创建一个代理对象来接收回调
-            let listener = NFCHardwareListener(manager: self)
-            objc_setAssociatedObject(manager, "listener", listener, .OBJC_ASSOCIATION_RETAIN)
-            _ = manager.perform(listenerSelector, with: listener)
-        }
         
         // 尝试使用 areFeaturesSupported 检查
         let featuresSelector = NSSelectorFromString("areFeaturesSupported:outError:")
