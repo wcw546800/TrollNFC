@@ -16,7 +16,7 @@ struct ContentView: View {
             ReadView()
                 .tabItem {
                     Image(systemName: "wave.3.right")
-                    Text("Read")
+                    Text("读取")
                 }
                 .tag(0)
             
@@ -24,7 +24,7 @@ struct ContentView: View {
             CardListView()
                 .tabItem {
                     Image(systemName: "creditcard.fill")
-                    Text("Cards")
+                    Text("卡片")
                 }
                 .tag(1)
             
@@ -32,7 +32,7 @@ struct ContentView: View {
             WriteView()
                 .tabItem {
                     Image(systemName: "square.and.pencil")
-                    Text("Write")
+                    Text("写入")
                 }
                 .tag(2)
             
@@ -40,7 +40,7 @@ struct ContentView: View {
             EmulateView()
                 .tabItem {
                     Image(systemName: "antenna.radiowaves.left.and.right")
-                    Text("Emulate")
+                    Text("模拟")
                 }
                 .tag(3)
             
@@ -48,7 +48,7 @@ struct ContentView: View {
             SettingsView()
                 .tabItem {
                     Image(systemName: "gear")
-                    Text("Settings")
+                    Text("设置")
                 }
                 .tag(4)
         }
@@ -80,7 +80,7 @@ struct ReadView: View {
                     .animation(isScanning ? Animation.easeInOut(duration: 1).repeatForever() : .default, value: isScanning)
                 
                 // 状态文本
-                Text(nfcManager.statusMessage.isEmpty ? "Ready to scan" : nfcManager.statusMessage)
+                Text(nfcManager.statusMessage.isEmpty ? "准备就绪" : nfcManager.statusMessage)
                     .font(.headline)
                     .foregroundColor(.secondary)
                 
@@ -91,7 +91,7 @@ struct ReadView: View {
                     Button(action: startQuickRead) {
                         HStack {
                             Image(systemName: "wave.3.right")
-                            Text("Quick Read")
+                            Text("快速读取")
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -103,7 +103,7 @@ struct ReadView: View {
                     Button(action: startFullDump) {
                         HStack {
                             Image(systemName: "doc.text.magnifyingglass")
-                            Text("Full Dump")
+                            Text("完整读取")
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -115,7 +115,7 @@ struct ReadView: View {
                     Button(action: readNDEF) {
                         HStack {
                             Image(systemName: "tag")
-                            Text("Read NDEF")
+                            Text("读取NDEF")
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -136,14 +136,14 @@ struct ReadView: View {
                 }
             }
             .navigationTitle("TrollNFC")
-            .alert("Save Card", isPresented: $showingSaveAlert) {
-                TextField("Card Name", text: $cardName)
-                Button("Cancel", role: .cancel) {}
-                Button("Save") {
+            .alert("保存卡片", isPresented: $showingSaveAlert) {
+                TextField("卡片名称", text: $cardName)
+                Button("取消", role: .cancel) {}
+                Button("保存") {
                     saveCurrentCard()
                 }
             } message: {
-                Text("Enter a name for this card")
+                Text("请输入卡片名称")
             }
         }
     }
@@ -212,12 +212,12 @@ struct StatusIndicator: View {
     
     private var statusText: String {
         switch state {
-        case .idle: return "Ready"
-        case .scanning: return "Scanning..."
-        case .reading: return "Reading..."
-        case .writing: return "Writing..."
-        case .emulating: return "Emulating..."
-        case .error(let msg): return "Error: \(msg)"
+        case .idle: return "就绪"
+        case .scanning: return "扫描中..."
+        case .reading: return "读取中..."
+        case .writing: return "写入中..."
+        case .emulating: return "模拟中..."
+        case .error(let msg): return "错误: \(msg)"
         }
     }
 }
@@ -272,7 +272,7 @@ struct CardListView: View {
         NavigationView {
             List {
                 if cardStorage.cards.isEmpty {
-                    Text("No saved cards")
+                    Text("暂无保存的卡片")
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .listRowBackground(Color.clear)
@@ -285,7 +285,7 @@ struct CardListView: View {
                     .onDelete(perform: cardStorage.deleteCard)
                 }
             }
-            .navigationTitle("Saved Cards")
+            .navigationTitle("已保存卡片")
             .toolbar {
                 EditButton()
             }
@@ -333,7 +333,7 @@ struct CardDetailView: View {
     var body: some View {
         List {
             // 基本信息
-            Section("Basic Info") {
+            Section("基本信息") {
                 InfoRow(label: "Type", value: card.type.rawValue)
                 InfoRow(label: "UID", value: card.uidString)
                 if let sak = card.sak {
@@ -346,12 +346,12 @@ struct CardDetailView: View {
             
             // Mifare数据
             if let sectors = card.sectors, !sectors.isEmpty {
-                Section("Sectors (\(sectors.count))") {
+                Section("扇区 (\(sectors.count))") {
                     ForEach(sectors) { sector in
-                        DisclosureGroup("Sector \(sector.sectorNumber)") {
+                        DisclosureGroup("扇区 \(sector.sectorNumber)") {
                             ForEach(sector.blocks) { block in
                                 VStack(alignment: .leading) {
-                                    Text("Block \(block.blockNumber)")
+                                    Text("块 \(block.blockNumber)")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                     Text(block.data.hexStringWithSpaces)
@@ -365,10 +365,10 @@ struct CardDetailView: View {
             
             // NDEF数据
             if let records = card.ndefRecords, !records.isEmpty {
-                Section("NDEF Records") {
+                Section("NDEF记录") {
                     ForEach(records) { record in
                         VStack(alignment: .leading) {
-                            Text("Type: \(record.typeString)")
+                            Text("类型: \(record.typeString)")
                                 .font(.caption)
                             if let text = record.payloadString {
                                 Text(text)
@@ -382,13 +382,13 @@ struct CardDetailView: View {
             }
             
             // 操作
-            Section("Actions") {
+            Section("操作") {
                 Button(action: { emulator.startEmulation(card: card) }) {
-                    Label("Emulate Card", systemImage: "antenna.radiowaves.left.and.right")
+                    Label("模拟卡片", systemImage: "antenna.radiowaves.left.and.right")
                 }
                 
                 Button(action: { showingExportSheet = true }) {
-                    Label("Export", systemImage: "square.and.arrow.up")
+                    Label("导出", systemImage: "square.and.arrow.up")
                 }
             }
         }
@@ -424,16 +424,16 @@ struct ExportSheet: View {
         NavigationView {
             List {
                 Button(action: exportJSON) {
-                    Label("Export as JSON", systemImage: "doc.text")
+                    Label("导出为JSON", systemImage: "doc.text")
                 }
                 
                 Button(action: exportFlipper) {
-                    Label("Export for Flipper Zero", systemImage: "wave.3.forward")
+                    Label("导出为Flipper Zero格式", systemImage: "wave.3.forward")
                 }
             }
-            .navigationTitle("Export")
+            .navigationTitle("导出")
             .toolbar {
-                Button("Done") { dismiss() }
+                Button("完成") { dismiss() }
             }
         }
     }
@@ -455,16 +455,16 @@ struct WriteView: View {
     @State private var writeMode: WriteMode = .text
     
     enum WriteMode: String, CaseIterable {
-        case text = "Text"
-        case url = "URL"
-        case raw = "Raw"
+        case text = "文本"
+        case url = "网址"
+        case raw = "原始数据"
     }
     
     var body: some View {
         NavigationView {
             Form {
-                Section("Write Mode") {
-                    Picker("Mode", selection: $writeMode) {
+                Section("写入模式") {
+                    Picker("模式", selection: $writeMode) {
                         ForEach(WriteMode.allCases, id: \.self) { mode in
                             Text(mode.rawValue).tag(mode)
                         }
@@ -472,16 +472,16 @@ struct WriteView: View {
                     .pickerStyle(.segmented)
                 }
                 
-                Section("Data") {
+                Section("数据") {
                     switch writeMode {
                     case .text:
-                        TextField("Enter text", text: $ndefText)
+                        TextField("输入文本", text: $ndefText)
                     case .url:
-                        TextField("Enter URL", text: $ndefURL)
+                        TextField("输入网址", text: $ndefURL)
                             .keyboardType(.URL)
                             .autocapitalization(.none)
                     case .raw:
-                        Text("Raw write coming soon...")
+                        Text("原始写入功能即将推出...")
                             .foregroundColor(.secondary)
                     }
                 }
@@ -491,14 +491,14 @@ struct WriteView: View {
                         HStack {
                             Spacer()
                             Image(systemName: "square.and.pencil")
-                            Text("Write to Tag")
+                            Text("写入到标签")
                             Spacer()
                         }
                     }
                     .disabled(!canWrite)
                 }
             }
-            .navigationTitle("Write")
+            .navigationTitle("写入")
         }
     }
     
@@ -530,12 +530,12 @@ struct EmulateView: View {
                 
                 // 选择卡片
                 if cardStorage.cards.isEmpty {
-                    Text("No cards available to emulate")
+                    Text("没有可模拟的卡片")
                         .foregroundColor(.secondary)
                         .padding()
                 } else {
-                    Picker("Select Card", selection: $selectedCard) {
-                        Text("None").tag(nil as NFCCard?)
+                    Picker("选择卡片", selection: $selectedCard) {
+                        Text("无").tag(nil as NFCCard?)
                         ForEach(cardStorage.cards) { card in
                             Text(card.displayName).tag(card as NFCCard?)
                         }
@@ -549,7 +549,7 @@ struct EmulateView: View {
                     Button(action: { emulator.stopEmulation() }) {
                         HStack {
                             Image(systemName: "stop.fill")
-                            Text("Stop Emulation")
+                            Text("停止模拟")
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -562,7 +562,7 @@ struct EmulateView: View {
                     Button(action: startEmulation) {
                         HStack {
                             Image(systemName: "antenna.radiowaves.left.and.right")
-                            Text("Start Emulation")
+                            Text("开始模拟")
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -577,10 +577,10 @@ struct EmulateView: View {
                 // 日志
                 VStack(alignment: .leading) {
                     HStack {
-                        Text("Log")
+                        Text("日志")
                             .font(.headline)
                         Spacer()
-                        Button("Clear") {
+                        Button("清除") {
                             emulator.clearLog()
                         }
                         .font(.caption)
@@ -603,13 +603,13 @@ struct EmulateView: View {
                 Spacer()
                 
                 // 警告
-                Text("⚠️ NFC emulation is experimental and may not work on all devices")
+                Text("⚠️ NFC模拟功能为实验性功能，可能无法在所有设备上正常工作")
                     .font(.caption)
                     .foregroundColor(.orange)
                     .multilineTextAlignment(.center)
                     .padding()
             }
-            .navigationTitle("Emulate")
+            .navigationTitle("模拟")
         }
     }
     
@@ -648,10 +648,10 @@ struct EmulationStatusView: View {
     
     private var statusText: String {
         switch state {
-        case .idle: return "Not emulating"
-        case .preparing: return "Preparing..."
-        case .active: return "Emulating"
-        case .error(let msg): return "Error: \(msg)"
+        case .idle: return "未模拟"
+        case .preparing: return "准备中..."
+        case .active: return "模拟中"
+        case .error(let msg): return "错误: \(msg)"
         }
     }
 }
@@ -663,16 +663,16 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             List {
-                Section("About") {
+                Section("关于") {
                     HStack {
-                        Text("Version")
+                        Text("版本")
                         Spacer()
                         Text("1.0.0")
                             .foregroundColor(.secondary)
                     }
                     
                     HStack {
-                        Text("Build")
+                        Text("构建")
                         Spacer()
                         Text("TrollStore")
                             .foregroundColor(.secondary)
@@ -680,27 +680,27 @@ struct SettingsView: View {
                 }
                 
                 Section("NFC") {
-                    Toggle("Show Debug Info", isOn: $showDebugInfo)
+                    Toggle("显示调试信息", isOn: $showDebugInfo)
                     
-                    NavigationLink("Common Keys") {
+                    NavigationLink("常用密钥") {
                         KeysView()
                     }
                 }
                 
-                Section("Data") {
+                Section("数据") {
                     Button(role: .destructive) {
                         // 清除所有数据
                     } label: {
-                        Text("Clear All Cards")
+                        Text("清除所有卡片")
                     }
                 }
                 
                 Section {
-                    Link("GitHub Repository", destination: URL(string: "https://github.com")!)
-                    Link("Report Issue", destination: URL(string: "https://github.com")!)
+                    Link("GitHub仓库", destination: URL(string: "https://github.com")!)
+                    Link("报告问题", destination: URL(string: "https://github.com")!)
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle("设置")
         }
     }
 }
@@ -708,10 +708,10 @@ struct SettingsView: View {
 // MARK: - 密钥视图
 struct KeysView: View {
     let commonKeys = [
-        ("Default", "FF FF FF FF FF FF"),
-        ("MAD", "A0 A1 A2 A3 A4 A5"),
-        ("NDEF", "D3 F7 D3 F7 D3 F7"),
-        ("Empty", "00 00 00 00 00 00"),
+        ("默认密钥", "FF FF FF FF FF FF"),
+        ("MAD密钥", "A0 A1 A2 A3 A4 A5"),
+        ("NDEF密钥", "D3 F7 D3 F7 D3 F7"),
+        ("空密钥", "00 00 00 00 00 00"),
     ]
     
     var body: some View {
@@ -726,7 +726,7 @@ struct KeysView: View {
                 }
             }
         }
-        .navigationTitle("Common Keys")
+        .navigationTitle("常用密钥")
     }
 }
 
