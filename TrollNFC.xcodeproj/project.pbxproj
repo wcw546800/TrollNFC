@@ -13,6 +13,8 @@
 		003 /* NFCManager.swift */ = {isa = PBXBuildFile; fileRef = 103; };
 		004 /* NFCEmulator.swift */ = {isa = PBXBuildFile; fileRef = 104; };
 		005 /* NFCCard.swift */ = {isa = PBXBuildFile; fileRef = 105; };
+		/* Resources */
+		007 /* Assets.xcassets */ = {isa = PBXBuildFile; fileRef = 303; };
 		/* Frameworks */
 		006 /* CoreNFC.framework */ = {isa = PBXBuildFile; fileRef = 201; };
 /* End PBXBuildFile section */
@@ -29,6 +31,7 @@
 		/* Resources */
 		301 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		302 /* TrollNFC.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TrollNFC.entitlements; sourceTree = "<group>"; };
+		303 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		/* Headers */
 		401 /* NFCPrivate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NFCPrivate.h; sourceTree = "<group>"; };
 		/* Frameworks */
@@ -65,6 +68,7 @@
 				G008 /* PrivateHeaders */,
 				301 /* Info.plist */,
 				302 /* TrollNFC.entitlements */,
+				303 /* Assets.xcassets */,
 			);
 			path = TrollNFC;
 			sourceTree = "<group>";
@@ -177,6 +181,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				007 /* Assets.xcassets */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
