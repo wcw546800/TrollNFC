@@ -119,10 +119,23 @@ struct ReadView: View {
                 
                 // 扫描按钮
                 VStack(spacing: 12) {
+                    // 私有模式 - 不弹出系统界面
+                    Button(action: startPrivateRead) {
+                        HStack {
+                            Image(systemName: "lock.open.fill")
+                            Text("私有模式读取")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
+                    
                     Button(action: startQuickRead) {
                         HStack {
                             Image(systemName: "wave.3.right")
-                            Text("快速读取")
+                            Text("标准读取")
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -156,7 +169,7 @@ struct ReadView: View {
                     }
                 }
                 .padding(.horizontal)
-                .disabled(isScanning || !nfcManager.isNFCAvailable)
+                .disabled(isScanning)
                 
                 // 最近读取的卡片
                 if let card = nfcManager.currentCard {
@@ -214,6 +227,12 @@ struct ReadView: View {
         if case .scanning = nfcManager.state { return true }
         if case .reading = nfcManager.state { return true }
         return false
+    }
+    
+    private func startPrivateRead() {
+        nfcManager.startPrivateReading { result in
+            // 结果已通过@Published处理
+        }
     }
     
     private func startQuickRead() {

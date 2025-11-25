@@ -8,14 +8,24 @@
 import Foundation
 import CoreNFC
 import Combine
+import UIKit
 
-// 私有API声明 - 从 NFCPrivate.h 桥接
+// MARK: - 私有NFC API声明
+
+// NFHardwareManager - 底层NFC硬件控制
 @objc protocol NFHardwareManagerProtocol {
     static func sharedManager() -> AnyObject?
     var isAvailable: Bool { get }
     var isEnabled: Bool { get }
     func setNFCEnabled(_ enabled: Bool)
     func transceive(_ command: Data, completion: @escaping (Data?, Error?) -> Void)
+    func startFieldDetect()
+    func stopFieldDetect()
+}
+
+// NFCTagReaderSession私有扩展
+@objc protocol NFCTagReaderSessionPrivate {
+    func restartPolling()
 }
 
 // MARK: - NFC操作状态
@@ -96,27 +106,199 @@ class NFCManager: NSObject, ObservableObject {
             return true
         }
         // 尝试私有API
-        if let hwManager = getHardwareManager(), hwManager.isAvailable {
+        if let _ = getPrivateNFCManager() {
             return true
         }
         return false
     }
     
-    // 获取私有NFC硬件管理器
-    private func getHardwareManager() -> NFHardwareManagerProtocol? {
-        guard let managerClass = NSClassFromString("NFHardwareManager") as? NSObject.Type else {
-            log("未找到NFHardwareManager类")
-            return nil
+    // 私有NFC管理器实例
+    private var privateNFCManager: AnyObject?
+    
+    // 获取私有NFC管理器 (NFHardwareManager)
+    private func getPrivateNFCManager() -> AnyObject? {
+        if let manager = privateNFCManager {
+            return manager
         }
         
-        let selector = NSSelectorFromString("sharedManager")
-        guard managerClass.responds(to: selector) else {
-            log("NFHardwareManager不响应sharedManager")
-            return nil
+        // 尝试获取 NFHardwareManager
+        if let managerClass = NSClassFromString("NFHardwareManager") {
+            let selector = NSSelectorFromString("sharedManager")
+            if let method = class_getClassMethod(managerClass, selector) {
+                let impl = method_getImplementation(method)
+                typealias Function = @convention(c) (AnyClass, Selector) -> AnyObject?
+                let function = unsafeBitCast(impl, to: Function.self)
+                if let manager = function(managerClass, selector) {
+                    privateNFCManager = manager
+                    log("✅ NFHardwareManager 获取成功")
+                    return manager
+                }
+            }
         }
         
-        let manager = managerClass.perform(selector)?.takeUnretainedValue()
-        return manager as? NFHardwareManagerProtocol
+        log("❌ 无法获取NFHardwareManager")
+        return nil
+    }
+    
+    // MARK: - 私有API读取（无系统弹窗）
+    func startPrivateReading(completion: @escaping (Result<NFCCard, Error>) -> Void) {
+        log("开始私有API读取模式...")
+        
+        guard let manager = getPrivateNFCManager() else {
+            log("无法获取私有NFC管理器，回退到标准模式")
+            startReading(completion: completion)
+            return
+        }
+        
+        readCompletion = completion
+        state = .scanning
+        statusMessage = "私有模式 - 请将卡片靠近iPhone顶部"
+        
+        // 尝试启用NFC
+        let enableSelector = NSSelectorFromString("setNFCEnabled:")
+        if manager.responds(to: enableSelector) {
+            _ = manager.perform(enableSelector, with: true)
+            log("已启用NFC")
+        }
+        
+        // 开始场检测
+        let startFieldSelector = NSSelectorFromString("startFieldDetect")
+        if manager.responds(to: startFieldSelector) {
+            _ = manager.perform(startFieldSelector)
+            log("已开始场检测")
+        }
+        
+        // 尝试读取标签
+        startPollingForTag(manager: manager)
+    }
+    
+    private func startPollingForTag(manager: AnyObject) {
+        log("开始轮询标签...")
+        
+        // 尝试发送REQA命令 (ISO14443-3A)
+        // REQA = 0x26, 用于激活卡片
+        let reqaCommand = Data([0x26])
+        
+        let transceiveSelector = NSSelectorFromString("transceive:completion:")
+        if manager.responds(to: transceiveSelector) {
+            log("发送REQA命令...")
+            
+            // 使用定时器轮询
+            pollForCard(manager: manager, attempts: 0, maxAttempts: 30)
+        } else {
+            log("私有管理器不支持transceive")
+            // 回退到标准模式
+            startReading(completion: readCompletion ?? { _ in })
+        }
+    }
+    
+    private func pollForCard(manager: AnyObject, attempts: Int, maxAttempts: Int) {
+        guard attempts < maxAttempts else {
+            log("轮询超时，未检测到卡片")
+            state = .idle
+            statusMessage = "未检测到卡片"
+            readCompletion?(.failure(NFCError.tagNotFound))
+            return
+        }
+        
+        // 发送ISO14443 REQA/WUPA命令
+        sendPrivateCommand(manager: manager, command: Data([0x52])) { [weak self] response, error in
+            guard let self = self else { return }
+            
+            if let response = response, !response.isEmpty {
+                // 收到响应，检测到卡片!
+                self.log("✅ 检测到卡片! ATQA: \(response.hexString)")
+                self.handlePrivateTagDetection(manager: manager, atqa: response)
+            } else {
+                // 继续轮询
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self.pollForCard(manager: manager, attempts: attempts + 1, maxAttempts: maxAttempts)
+                }
+            }
+        }
+    }
+    
+    private func sendPrivateCommand(manager: AnyObject, command: Data, completion: @escaping (Data?, Error?) -> Void) {
+        // 使用NSInvocation调用私有方法
+        let selector = NSSelectorFromString("transceive:completion:")
+        
+        guard manager.responds(to: selector) else {
+            completion(nil, NFCError.unsupportedTag)
+            return
+        }
+        
+        // 简化处理 - 直接调用
+        let methodIMP = manager.method(for: selector)
+        typealias TransceiveFunc = @convention(c) (AnyObject, Selector, Data, @escaping (Data?, Error?) -> Void) -> Void
+        let transceive = unsafeBitCast(methodIMP, to: TransceiveFunc.self)
+        transceive(manager, selector, command, completion)
+    }
+    
+    private func handlePrivateTagDetection(manager: AnyObject, atqa: Data) {
+        state = .reading
+        statusMessage = "正在读取卡片..."
+        
+        // 发送防冲突命令获取UID
+        // ANTICOLLISION = 0x93 0x20
+        sendPrivateCommand(manager: manager, command: Data([0x93, 0x20])) { [weak self] response, error in
+            guard let self = self else { return }
+            
+            if let uid = response, uid.count >= 4 {
+                self.log("✅ UID: \(uid.hexString)")
+                
+                // 创建卡片对象
+                var card = NFCCard(
+                    name: "",
+                    type: .mifareClassic,
+                    uid: uid
+                )
+                card.atqa = atqa
+                
+                // 尝试获取SAK
+                self.selectCard(manager: manager, uid: uid, card: &card)
+            } else {
+                self.log("获取UID失败")
+                self.state = .idle
+                self.readCompletion?(.failure(NFCError.readFailed))
+            }
+        }
+    }
+    
+    private func selectCard(manager: AnyObject, uid: Data, card: inout NFCCard) {
+        var mutableCard = card
+        
+        // SELECT命令 = 0x93 0x70 + UID(4字节) + BCC
+        var selectCmd = Data([0x93, 0x70])
+        selectCmd.append(uid.prefix(4))
+        
+        // 计算BCC
+        var bcc: UInt8 = 0
+        for byte in uid.prefix(4) {
+            bcc ^= byte
+        }
+        selectCmd.append(bcc)
+        
+        sendPrivateCommand(manager: manager, command: selectCmd) { [weak self] response, error in
+            guard let self = self else { return }
+            
+            if let sak = response?.first {
+                self.log("✅ SAK: 0x\(String(format: "%02X", sak))")
+                mutableCard.sak = sak
+            }
+            
+            // 完成读取
+            self.currentCard = mutableCard
+            self.state = .idle
+            self.statusMessage = "读取成功!"
+            self.log("✅ 卡片读取完成")
+            self.readCompletion?(.success(mutableCard))
+            
+            // 停止场检测
+            let stopSelector = NSSelectorFromString("stopFieldDetect")
+            if manager.responds(to: stopSelector) {
+                _ = manager.perform(stopSelector)
+            }
+        }
     }
     
     // MARK: - 读取标签
@@ -131,19 +313,47 @@ class NFCManager: NSObject, ObservableObject {
         }
         
         log("NFC可用，启动会话...")
+        log("轮询选项: ISO14443 + ISO15693 + ISO18092")
         currentOperation = operation
         readCompletion = completion
         state = .scanning
-        statusMessage = "请将iPhone靠近NFC标签"
+        statusMessage = "请将卡片放在iPhone顶部"
         
-        // 使用TagReaderSession以获取更多标签信息
+        // 使用所有可用的轮询选项
+        // iso14443: Mifare, ISO-DEP (Type A/B)
+        // iso15693: Vicinity cards  
+        // iso18092: FeliCa, NFC-F
         tagReaderSession = NFCTagReaderSession(
             pollingOption: [.iso14443, .iso15693, .iso18092],
             delegate: self
         )
-        tagReaderSession?.alertMessage = "请将iPhone靠近NFC标签进行读取"
+        tagReaderSession?.alertMessage = "请将卡片放在iPhone顶部\n保持静止直到读取完成"
         tagReaderSession?.begin()
-        log("NFC会话已启动")
+        log("NFC会话已启动，等待检测标签...")
+    }
+    
+    // MARK: - 使用原始ISO14443读取（尝试读取更多类型的卡）
+    func startRawReading(completion: @escaping (Result<NFCCard, Error>) -> Void) {
+        log("开始原始读取模式...")
+        
+        guard isNFCAvailable else {
+            completion(.failure(NFCError.notAvailable))
+            return
+        }
+        
+        currentOperation = .readTag
+        readCompletion = completion
+        state = .scanning
+        statusMessage = "原始模式 - 请将卡片放在iPhone顶部"
+        
+        // 只使用ISO14443，更精确的轮询
+        tagReaderSession = NFCTagReaderSession(
+            pollingOption: [.iso14443],
+            delegate: self
+        )
+        tagReaderSession?.alertMessage = "原始ISO14443模式\n请将卡片放在iPhone顶部"
+        tagReaderSession?.begin()
+        log("ISO14443会话已启动")
     }
     
     // MARK: - 读取NDEF
