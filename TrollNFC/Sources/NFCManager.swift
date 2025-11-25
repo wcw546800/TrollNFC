@@ -199,7 +199,6 @@ class NFCManager: NSObject, ObservableObject {
         
         var sectors: [MifareSector] = []
         let group = DispatchGroup()
-        var hasError = false
         
         for sectorNum in 0..<sectorCount {
             group.enter()
@@ -367,17 +366,19 @@ class NFCManager: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let info):
-                    card.dsfId = info.dsfID
-                    card.afi = info.afi
-                    card.icReference = info.icReference
+                    var updatedCard = card
+                    updatedCard.dsfId = info.dsfID
+                    updatedCard.afi = info.afi
+                    updatedCard.icReference = info.icReference
                     
                     // 读取数据块
-                    self?.readISO15693Blocks(tag: tag, blockCount: info.blockCount, card: &card) { readResult in
-                        self?.currentCard = card
+                    self?.readISO15693Blocks(tag: tag, blockCount: info.blockCount) { rawData in
+                        updatedCard.rawData = rawData
+                        self?.currentCard = updatedCard
                         session.alertMessage = "Tag read successfully!"
                         session.invalidate()
                         self?.state = .idle
-                        self?.readCompletion?(.success(card))
+                        self?.readCompletion?(.success(updatedCard))
                     }
                     
                 case .failure:
@@ -392,23 +393,25 @@ class NFCManager: NSObject, ObservableObject {
     }
     
     // MARK: - 读取ISO15693块
-    private func readISO15693Blocks(tag: NFCISO15693Tag, blockCount: Int, card: inout NFCCard, completion: @escaping (Result<Void, Error>) -> Void) {
+    private func readISO15693Blocks(tag: NFCISO15693Tag, blockCount: Int, completion: @escaping (Data) -> Void) {
         var rawData = Data()
         let group = DispatchGroup()
+        let lock = NSLock()
         
         for block in 0..<min(blockCount, 64) {
             group.enter()
             tag.readSingleBlock(requestFlags: [.highDataRate], blockNumber: UInt8(block)) { result in
                 if case .success(let data) = result {
+                    lock.lock()
                     rawData.append(data)
+                    lock.unlock()
                 }
                 group.leave()
             }
         }
         
         group.notify(queue: .main) {
-            card.rawData = rawData
-            completion(.success(()))
+            completion(rawData)
         }
     }
     
@@ -424,7 +427,7 @@ class NFCManager: NSObject, ObservableObject {
         )
         
         card.idm = tag.currentIDm
-        card.pmm = tag.currentSystemCode
+        card.systemCode = tag.currentSystemCode
         
         currentCard = card
         session.alertMessage = "FeliCa tag read successfully!"
